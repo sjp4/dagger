@@ -588,18 +588,27 @@ final class BindingFactory {
       DeclaredType type = currentType.get();
       ancestors.add(MoreElements.asType(type.asElement()));
       for (Element enclosedElement : type.asElement().getEnclosedElements()) {
+        if (enclosedElement.getKind().equals(ElementKind.METHOD)) {
+          ExecutableElement injectionSiteMethod =
+              MoreElements.asExecutable(enclosedElement);
+          overriddenMethodMap.put(
+              injectionSiteMethod.getSimpleName().toString(), injectionSiteMethod);
+        }
+
+        if (!isAnnotationPresent(enclosedElement, Inject.class)
+            || enclosedElement.getModifiers().contains(PRIVATE)
+            || enclosedElement.getModifiers().contains(STATIC)) {
+          // Don't attempt to visit elements which won't be injected (they might not be on the
+          // classpath).
+          continue;
+        }
+
         Optional<InjectionSite> maybeInjectionSite =
             injectionSiteVisitor.visit(enclosedElement, type);
         if (maybeInjectionSite.isPresent()) {
           InjectionSite injectionSite = maybeInjectionSite.get();
           if (shouldBeInjected(injectionSite.element(), overriddenMethodMap)) {
             injectionSites.add(injectionSite);
-          }
-          if (injectionSite.kind().equals(InjectionSite.Kind.METHOD)) {
-            ExecutableElement injectionSiteMethod =
-                MoreElements.asExecutable(injectionSite.element());
-            overriddenMethodMap.put(
-                injectionSiteMethod.getSimpleName().toString(), injectionSiteMethod);
           }
         }
       }
@@ -620,12 +629,6 @@ final class BindingFactory {
 
   private boolean shouldBeInjected(
       Element injectionSite, SetMultimap<String, ExecutableElement> overriddenMethodMap) {
-    if (!isAnnotationPresent(injectionSite, Inject.class)
-        || injectionSite.getModifiers().contains(PRIVATE)
-        || injectionSite.getModifiers().contains(STATIC)) {
-      return false;
-    }
-
     if (injectionSite.getKind().isField()) { // Inject all fields (self and ancestors)
       return true;
     }
